@@ -16,9 +16,9 @@ A production-grade local HTTP TTS service built on **[CosyVoice 2](https://githu
 
 The service reading its own description — synthesized by CosyTTS itself, in a voice cloned from a **public-domain LibriVox** audiobook recording (reader: Bob Neufeld):
 
-<video src="https://github.com/SugarmanZhu/CosyTTS/raw/main/assets/demo.mp4" controls width="100%"></video>
+[![▶ Play the demo (audio, 23s)](assets/demo_poster.png)](https://github.com/SugarmanZhu/CosyTTS/raw/main/assets/demo.mp4)
 
-▶ If the player doesn't load inline, [download / play `assets/demo.mp4`](assets/demo.mp4). Generated with a single request:
+*(click the waveform to play / download — GitHub doesn't allow inline audio players for committed files)*. Generated with a single request:
 
 ```json
 {
