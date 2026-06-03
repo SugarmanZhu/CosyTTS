@@ -1,0 +1,228 @@
+# CosyTTS
+
+A production-grade local HTTP TTS service built on **[CosyVoice 2](https://github.com/FunAudioLLM/CosyVoice)** with the rough edges sanded off:
+
+- **Zero-shot voice cloning** — register a 3-10s reference sample, then synthesize any text in that voice
+- **Per-character timestamps** (Whisper forced alignment) — clean handling of Chinese, English, mixed scripts, BPE shards, apostrophes
+- **Streaming output** — chunked PCM with low TTFB for real-time playback
+- **Speed control** — 0.5×-2× rate without pitch change
+- **Auto text normalization** — Traditional → Simplified, multi-word English → lowercase (so "CLOSE TO YOU" isn't spelled letter-by-letter and Title Case song titles read as statements, not questions)
+- **Pronunciation verification (rejection sampling)** — optional: judge each take with Whisper and regenerate mispronounced ones (great for Chinese / gross errors; see limitations on English proper nouns)
+- **Peak normalization** to -1 dBFS so output loudness doesn't depend on the reference recording level
+- **FastAPI** wrapper with OpenAPI docs, CORS for browser clients, multipart voice upload
+- **Verified on Windows 11 + RTX 5090** (Blackwell sm_120), but works on any CUDA 12-capable Linux/Windows box
+
+## ⚠️ Ethics
+
+This tool can clone someone's voice from a short audio sample. Use it for projects with **informed consent**: your own voice, public-domain voices, hired voice actors, or voices you have explicit permission to clone.
+
+**Do not** use it to impersonate real people, generate misleading audio of public figures, or create audio that could be mistaken for genuine recordings without disclosure. Many jurisdictions treat unauthorized voice cloning as a personality-rights or fraud violation regardless of how the model was trained.
+
+The authors of this wrapper take no responsibility for how it's used downstream — but if you publish output, *say it's synthetic*.
+
+## Consumer documentation
+
+If you just want to **call** this service from another project, read **[USAGE.md](USAGE.md)** — it covers the request schema, three response modes (binary WAV / JSON with timestamps / streaming PCM), client examples in Python / JS / curl, and performance numbers.
+
+The rest of this README is about **running** the server.
+
+## Architecture
+
+```
+┌─────────────────────┐
+│ POST /tts {text,…}  │
+└──────────┬──────────┘
+           ▼
+   ┌───────────────┐    Traditional→Simplified, ALL-CAPS lowercase
+   │ preprocess    │
+   └───────┬───────┘
+           ▼
+   ┌───────────────┐    zero_shot / cross_lingual / instruct2
+   │ CosyVoice 2   │    GPU (PyTorch cu128) + onnxruntime-gpu
+   │  inference    │    24kHz float32 chunks
+   └───────┬───────┘
+           ▼
+   ┌───────────────┐    int16 PCM, peak-normalize to -1 dBFS
+   │ post-process  │
+   └───────┬───────┘
+           ▼
+   ┌───────────────┐    ↘ stream  → audio/L16 (chunked PCM)
+   │ response      │    → default → audio/wav (binary)
+   │ formatter     │    ↘ ts:true → JSON {audio_b64, timestamps[]}
+   └───────┬───────┘                ↑ Whisper large-v3 forced alignment
+           ▼                          + char re-mapping to original input
+        client
+```
+
+Code layout:
+- `app/main.py` — FastAPI app, endpoints, lifespan
+- `app/engine.py` — CosyVoice2 wrapper (singleton, loaded once at startup)
+- `app/voices.py` — filesystem-backed voice registry
+- `app/audio.py` — format conversion, peak normalize, WAV/PCM encoding
+- `app/alignment.py` — Whisper forced alignment + BPE/glue/CJK merge logic
+- `app/schemas.py` — Pydantic request/response models
+- `app/config.py` — env-var overridable config
+
+## Hardware / OS targets
+
+- **GPU**: any CUDA 12-capable NVIDIA. For Blackwell (RTX 5090/4090 Super/etc., sm_120), PyTorch ≥ 2.9 with cu128 wheels is required — older wheels emit `sm_120 is not compatible`.
+- **OS**: Windows 11 verified end-to-end; the install script below is for Windows. On Linux the install is much shorter (skip Miniforge, use pip + the CosyVoice upstream `requirements.txt` directly).
+- **Python**: 3.11. 3.12 might work; 3.13 will NOT — multiple deps not ready as of 2026-06.
+- **Disk**: ~10 GB total (5 GB PyTorch + 2 GB CosyVoice2-0.5B model + 3 GB deps).
+- **VRAM**: ~3 GB for CosyVoice idle, +6 GB if `timestamps:true` triggers Whisper large-v3 load.
+
+## Setup (Windows 11)
+
+The hard part is dependency wrangling. Treat this as a recipe — every step is there because skipping it broke something the first time.
+
+### 1. Prerequisites
+
+```powershell
+# Miniforge (needed for pynini — pip wheel is broken on Windows)
+winget install --id=CondaForge.Miniforge3 -e
+
+# Git, ffmpeg are assumed already installed
+```
+
+Restart PowerShell so `conda` is on PATH.
+
+### 2. Clone this repo + CosyVoice
+
+```powershell
+git clone https://github.com/<you>/CosyTTS.git
+cd CosyTTS
+git clone --recursive https://github.com/FunAudioLLM/CosyVoice.git
+```
+
+### 3. Conda env with Python 3.11 + pynini + FFmpeg shared libs
+
+```powershell
+$conda = "$env:USERPROFILE\miniforge3\Scripts\conda.exe"
+& $conda create -y -p .\.venv -c conda-forge `
+  "python=3.11" "pynini=2.1.5" "ffmpeg=7.*"
+```
+
+(We're using conda for these three because pip versions don't work cleanly on Windows: pynini needs a C++ build, FFmpeg shared libs need to land in the env's `Library\bin` for torchcodec.)
+
+### 4. PyTorch cu128 (Blackwell support)
+
+```powershell
+.\.venv\python.exe -m pip install --upgrade pip
+.\.venv\python.exe -m pip install --force-reinstall --no-deps `
+  torch==2.9.0 torchaudio==2.9.0 torchvision==0.24.0 `
+  --index-url https://download.pytorch.org/whl/cu128
+```
+
+Verify:
+
+```powershell
+.\.venv\python.exe -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_capability())"
+# Expect: True (12, 0)
+```
+
+### 5. Downgrade setuptools (whisper's setup.py uses removed `pkg_resources`)
+
+```powershell
+.\.venv\python.exe -m pip install "setuptools<81"
+```
+
+### 6. Install CosyVoice dependencies
+
+Create `cosyvoice-requirements-filtered.txt` from `CosyVoice\requirements.txt` with these edits:
+
+- Delete the line `--extra-index-url https://download.pytorch.org/whl/cu121`
+- Delete `torch==2.3.1` and `torchaudio==2.3.1` (we have newer)
+- Delete `wetext==0.0.4` (install separately)
+- Change `openai-whisper==20231117` → `openai-whisper>=20240930`
+
+Then install:
+
+```powershell
+.\.venv\python.exe -m pip install --no-build-isolation -r cosyvoice-requirements-filtered.txt
+.\.venv\python.exe -m pip install --no-build-isolation wetext==0.0.4 torchcodec
+.\.venv\python.exe -m pip install -r requirements.txt
+```
+
+### 7. Patch CosyVoice's `load_wav`
+
+`torchaudio ≥ 2.9` routes `torchaudio.load` through `torchcodec`, which fails on Windows because conda-forge FFmpeg 7.1's ABI doesn't match torchcodec's bundled cores. Run the included patch (idempotent):
+
+```powershell
+.\.venv\python.exe scripts\patch_cosyvoice.py
+```
+
+It rewrites `load_wav` in `CosyVoice\cosyvoice\utils\file_utils.py` to read audio with `soundfile` directly (no torchcodec).
+
+### 8. (Optional) Switch to GPU onnxruntime
+
+Speeds up the CosyVoice speech tokenizer by ~5×:
+
+```powershell
+.\.venv\python.exe -m pip uninstall -y onnxruntime
+.\.venv\python.exe -m pip install --no-build-isolation onnxruntime-gpu `
+  --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/
+```
+
+`run.ps1` already adds `torch\lib` (which has CUDA + cuDNN DLLs bundled by the PyTorch wheel) to PATH so onnxruntime-gpu finds them — no separate CUDA toolkit install needed.
+
+### 9. Download the CosyVoice2-0.5B model (~2 GB)
+
+```powershell
+.\.venv\python.exe scripts\download_model.py
+```
+
+### 10. Run
+
+```powershell
+.\run.ps1
+```
+
+Service starts on `http://0.0.0.0:8765`. Hit `http://127.0.0.1:8765/docs` to see the Swagger UI.
+
+## Configuration (env vars)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TTS_HOST` | `0.0.0.0` | Bind address. Set `127.0.0.1` for local-only. |
+| `TTS_PORT` | `8765` | Listen port. |
+| `TTS_DEFAULT_VOICE` | `dj` | Voice used when `/tts` is called without `speaker`. Falls back to the first registered voice. |
+| `TTS_WHISPER_MODEL` | `large-v3` | Whisper model used for timestamp alignment. `medium` is ~2× faster, slightly less accurate. |
+| `TTS_CORS_ORIGINS` | `*` | Comma-separated allowed origins. |
+
+## Known pitfalls
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `sm_120 is not compatible` warning | torch < 2.9 / cu128 | Reinstall torch 2.9.0+cu128 |
+| `ModuleNotFoundError: pkg_resources` building whisper | setuptools ≥ 81 + build isolation | `pip install "setuptools<81"` + `--no-build-isolation` |
+| `Could not load libtorchcodec_coreN.dll` | FFmpeg DLLs not on PATH | `run.ps1` adds `.venv\Library\bin` automatically; if running uvicorn manually, set the PATH yourself |
+| `TorchCodec is required for load_with_torchcodec` | torchaudio 2.9 routes load through torchcodec | Patch `cosyvoice/utils/file_utils.py` (see step 7) |
+| ORT silently using `CPUExecutionProvider` | `torch\lib` not on PATH | `run.ps1` handles this; check `print(ort.get_available_providers())` returns `CUDAExecutionProvider` |
+| Output sounds very quiet | Voice was registered before peak-normalize landed | `DELETE /voices/<id>` then re-register |
+
+## Known limitations
+
+- **English proper nouns in cloned voices.** When a voice cloned from a Chinese
+  speaker says English names ("Taylor Swift"), CosyVoice 2 0.5B sometimes
+  mangles them, and the pronunciation varies run-to-run (it's non-deterministic).
+  The Whisper-based verifier can't reliably catch this — Whisper itself
+  mis-transcribes accented English names, so its judgement doesn't correlate
+  with human perception there. Verification works well for Chinese content and
+  gross garbling, not English-name fidelity. For important clips, re-roll.
+- **Prosody / intonation** (e.g. an English title occasionally read with a
+  questioning rise) is not auto-detectable via the text-based verifier and is
+  left to the model. Lowercasing multi-word English (done automatically) helps.
+- **Streaming + verification are mutually exclusive** — you can't judge audio
+  that's already streaming out.
+
+## License
+
+[Apache 2.0](LICENSE). CosyVoice (Alibaba/FunAudioLLM) and its dependencies retain their respective licenses — see [NOTICE](NOTICE).
+
+## Acknowledgements
+
+The hard work is all upstream:
+
+- **CosyVoice 2** by FunAudioLLM/Alibaba — the voice synthesis model itself
+- **Whisper** by OpenAI — used for forced alignment
+- The PyTorch, FastAPI, and conda-forge maintainers who made the rest tractable on Windows

@@ -1,0 +1,50 @@
+# Python venv + caches
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Upstream CosyVoice clone — users clone it themselves per README
+CosyVoice/
+
+# Downloaded model weights (~2 GB) — not committed
+pretrained_models/
+
+# Registered voices (reference audio + transcripts) — personal data
+data/voices/
+data/
+
+# Generated audio + temporary uploads (anything binary at the root)
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+out*.wav
+stream_out.wav
+
+# Logs / scratch
+*.log
+*.tmp
+*.bak
+
+# IDE / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Per-machine overrides (FastAPI + uvicorn config, env vars, etc.)
+.env
+.env.local
+*.local.json
+cosyvoice-requirements-filtered.txt
+
+# Scratch / debug scripts (single-underscore prefix; keeps __init__.py safe)
+scripts/_[a-z]*.py
+_[a-z]*.py

@@ -1,0 +1,33 @@
+CosyTTS
+Copyright 2026 CosyTTS contributors
+
+This product includes software developed by:
+
+  * CosyVoice 2 (Alibaba / FunAudioLLM)
+    https://github.com/FunAudioLLM/CosyVoice
+    Licensed under Apache License 2.0
+    The CosyVoice2-0.5B model and inference code are bundled separately
+    via `git clone` per the setup instructions.
+
+  * Whisper (OpenAI)
+    https://github.com/openai/whisper
+    Licensed under MIT
+    Used for forced alignment / per-character timestamp extraction.
+
+  * FastAPI
+    https://github.com/fastapi/fastapi
+    Licensed under MIT
+
+  * PyTorch
+    https://pytorch.org/
+    Licensed under BSD-3-Clause-style
+
+  * zhconv
+    https://github.com/gumblex/zhconv
+    Licensed under MIT
+    Used for Traditional→Simplified Chinese normalization.
+
+  * wetext / kaldifst (FunAudioLLM)
+    Used for Chinese text normalization in CosyVoice's frontend.
+
+See each upstream project for its full license text.

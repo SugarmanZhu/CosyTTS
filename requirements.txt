@@ -1,0 +1,17 @@
+# Install in this order — see README.
+# PyTorch (cu128 for RTX 5090) must be installed separately:
+#   uv pip install torch==2.9.0 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# pynini must be installed via conda:
+#   conda install -p .venv -c conda-forge pynini==2.1.5
+
+# CosyVoice 2 will pull in its own requirements from CosyVoice/requirements.txt.
+# This file lists the service layer only.
+
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+soundfile>=0.12
+librosa>=0.10
+huggingface_hub>=0.24
+pydantic>=2.7
+numpy<2
