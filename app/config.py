@@ -27,7 +27,10 @@ WHISPER_MODEL = os.environ.get("TTS_WHISPER_MODEL", "large-v3")
 
 # Pronunciation verification (rejection sampling). When enabled, generated
 # audio is judged by Whisper and regenerated if it scores below threshold.
-VERIFY_DEFAULT = os.environ.get("TTS_VERIFY_DEFAULT", "false").lower() == "true"
+# Default ON: catches CosyVoice's occasional runaway/garbage takes (e.g. a 15s
+# noise burst that scores ~0). Adds ~1.5s/call; set TTS_VERIFY_DEFAULT=false to
+# disable globally, or pass "verify": false per request (e.g. latency-sensitive).
+VERIFY_DEFAULT = os.environ.get("TTS_VERIFY_DEFAULT", "true").lower() == "true"
 VERIFY_THRESHOLD = float(os.environ.get("TTS_VERIFY_THRESHOLD", "0.90"))
 VERIFY_MAX_ATTEMPTS = int(os.environ.get("TTS_VERIFY_MAX_ATTEMPTS", "3"))
 VERIFY_ATTEMPTS_CAP = 6  # hard ceiling regardless of request

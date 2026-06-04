@@ -7,8 +7,8 @@ A production-grade local HTTP TTS service built on **[CosyVoice 2](https://githu
 - **Streaming output** — chunked PCM with low TTFB for real-time playback
 - **Speed control** — 0.5×-2× rate without pitch change
 - **Auto text normalization** — Traditional → Simplified, multi-word English → lowercase (so "CLOSE TO YOU" isn't spelled letter-by-letter and Title Case song titles read as statements, not questions)
-- **Pronunciation verification (rejection sampling)** — optional: judge each take with Whisper and regenerate mispronounced ones (great for Chinese / gross errors; see limitations on English proper nouns)
-- **Peak normalization** to -1 dBFS so output loudness doesn't depend on the reference recording level
+- **Pronunciation verification (rejection sampling)** — **on by default**: judge each take with Whisper and regenerate garbage/mispronounced ones (catches CosyVoice's occasional runaway noise takes; great for Chinese / gross errors; see limitations on English proper nouns)
+- **Edge trim + peak normalization** — strips leading/trailing silence & hiss, normalizes to -1 dBFS so output loudness doesn't depend on the reference recording level
 - **FastAPI** wrapper with OpenAPI docs, CORS for browser clients, multipart voice upload
 - **Verified on Windows 11 + RTX 5090** (Blackwell sm_120), but works on any CUDA 12-capable Linux/Windows box
 

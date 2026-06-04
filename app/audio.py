@@ -75,15 +75,38 @@ def normalize_to_mono_16k(wav_bytes: bytes, out_path) -> tuple[int, float]:
     return 16000, duration
 
 
+def trim_edges(arr: np.ndarray, sample_rate: int, top_db: float = 38.0,
+               pad_ms: float = 40.0) -> np.ndarray:
+    """Trim leading/trailing near-silence (and edge hiss) using librosa, keeping
+    a small pad so words don't start/end abruptly. No-op if the clip is all quiet.
+    """
+    import librosa
+    if arr.size == 0:
+        return arr
+    intervals = librosa.effects.split(arr, top_db=top_db)
+    if len(intervals) == 0:
+        return arr
+    start = intervals[0][0]
+    end = intervals[-1][1]
+    pad = int(sample_rate * pad_ms / 1000.0)
+    start = max(0, start - pad)
+    end = min(len(arr), end + pad)
+    return arr[start:end]
+
+
 def tensor_chunks_to_wav_bytes(
-    chunks: list[torch.Tensor], sample_rate: int, normalize: bool = True
+    chunks: list[torch.Tensor], sample_rate: int, normalize: bool = True,
+    trim: bool = True,
 ) -> bytes:
     """Concatenate float32 tensor chunks ([1, N]) and encode as 16-bit PCM WAV bytes.
 
-    When ``normalize`` is True (default), the entire utterance is peak-normalized
-    to TARGET_PEAK_DBFS so quiet voice clones come out at consistent loudness.
+    - ``trim`` (default True): strip leading/trailing silence + edge hiss.
+    - ``normalize`` (default True): peak-normalize to TARGET_PEAK_DBFS so quiet
+      voice clones come out at consistent loudness.
     """
     arr = torch.cat(chunks, dim=1).squeeze(0).cpu().numpy()
+    if trim:
+        arr = trim_edges(arr, sample_rate)
     if normalize:
         arr = peak_normalize(arr)
     arr = np.clip(arr, -1.0, 1.0)

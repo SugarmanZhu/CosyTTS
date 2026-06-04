@@ -28,8 +28,8 @@ If no `speaker` is given, the server uses its configured default voice (`TTS_DEF
   "timestamps":       false,        // optional, see "JSON mode" below
   "stream":           false,        // optional, chunked PCM output
   "simplify_chinese": true,         // optional, Traditional→Simplified before synth
-  "verify":           false,        // optional, judge + regenerate mispronounced takes
-  "max_attempts":     3,            // optional, retry cap when verify=true (max 6)
+  "verify":           true,         // optional, judge + regenerate bad takes (DEFAULT ON)
+  "max_attempts":     3,            // optional, retry cap when verify on (max 6)
   "min_score":        0.90,         // optional, accept threshold 0-1 (higher = stricter)
   "mode":             "zero_shot",  // optional. zero_shot | cross_lingual | instruct2
   "instruct_text":    null          // required for mode=instruct2, e.g. "用悲伤的语调"
@@ -39,16 +39,25 @@ If no `speaker` is given, the server uses its configured default voice (`TTS_DEF
 `timestamps` and `stream` are mutually exclusive (server returns 400 if both true).
 `verify` only applies to non-streaming requests.
 
-### Pronunciation verification (`verify: true`)
+### Pronunciation verification (on by default)
 
 Each generated take is transcribed by Whisper (without being shown the target
 text) and compared phonetically to what you asked for. Takes scoring below
 `min_score` are regenerated, up to `max_attempts`. The best take is returned.
 
-- **Works well** for Chinese content and gross garbling (dropped/wrong words).
-- **Does NOT reliably help** English proper nouns in cloned voices — Whisper
-  mis-transcribes accented English names, so its judgement is unreliable there.
-- Costs ~1.5 s per attempt (Whisper pass). Off by default.
+This is **on by default** because CosyVoice 2 is non-deterministic and
+occasionally emits a runaway/garbage take (e.g. a 15 s noise burst that
+transcribes to nothing). Such takes score ~0 and get resampled automatically —
+no client change needed.
+
+- **Catches** gross garbling, dropped/wrong words, runaway noise takes, and
+  most Chinese mispronunciations.
+- **Does NOT catch** intonation/prosody or English proper-noun fidelity in
+  cloned voices (Whisper mis-transcribes accented English names, so its
+  judgement is unreliable there — see Known limitations in the README).
+- Costs ~1.5 s per attempt (one Whisper pass). To disable for a latency-
+  sensitive call, send `"verify": false`; to disable globally set
+  `TTS_VERIFY_DEFAULT=false`. Ignored for streaming requests.
 
 When `verify` is on, the binary-WAV response carries `X-TTS-Attempts`,
 `X-TTS-Score`, `X-TTS-Passed` headers; the JSON response (timestamps mode)
