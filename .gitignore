@@ -45,6 +45,6 @@ Thumbs.db
 *.local.json
 cosyvoice-requirements-filtered.txt
 
-# Scratch / debug scripts (single-underscore prefix; keeps __init__.py safe)
-scripts/_[a-z]*.py
-_[a-z]*.py
+# Scratch / debug files of any extension (single-underscore + lowercase prefix;
+# keeps __init__.py and other dunders safe). Covers _demo.ass, _frames/, etc.
+_[a-z]*
