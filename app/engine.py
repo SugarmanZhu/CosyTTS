@@ -9,16 +9,19 @@ import torch
 
 from app.config import COSYVOICE_REPO, MATCHA_TTS, MODEL_DIR, FP16, LOAD_JIT, LOAD_TRT
 
-# Make CUDA/cuDNN DLLs (bundled with the torch wheel) findable by
-# onnxruntime-gpu, which uses Win32 LoadLibrary and needs them on the DLL
-# search path. Must run before any onnxruntime CUDA EP load attempt.
+# Make CUDA/cuDNN DLLs (bundled with the torch wheel) and the conda FFmpeg
+# DLLs findable via Win32 LoadLibrary. Doing this in-process means the service
+# works no matter how it's launched (uvicorn, run.ps1, or directly under NSSM
+# with a minimal PATH) — onnxruntime-gpu and torchaudio find their DLLs.
 _TORCH_LIB = Path(torch.__file__).resolve().parent / "lib"
-if _TORCH_LIB.is_dir():
-    try:
-        os.add_dll_directory(str(_TORCH_LIB))
-    except (AttributeError, OSError):
-        pass
-    os.environ["PATH"] = str(_TORCH_LIB) + os.pathsep + os.environ.get("PATH", "")
+_LIBRARY_BIN = Path(sys.executable).resolve().parent.parent / "Library" / "bin"
+for _d in (_TORCH_LIB, _LIBRARY_BIN):
+    if _d.is_dir():
+        try:
+            os.add_dll_directory(str(_d))
+        except (AttributeError, OSError):
+            pass
+        os.environ["PATH"] = str(_d) + os.pathsep + os.environ.get("PATH", "")
 
 # CosyVoice imports rely on sys.path containing the repo root and Matcha-TTS.
 sys.path.insert(0, str(MATCHA_TTS))

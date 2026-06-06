@@ -196,6 +196,22 @@ Speeds up the CosyVoice speech tokenizer by ~5×:
 
 Service starts on `http://0.0.0.0:8765`. Hit `http://127.0.0.1:8765/docs` to see the Swagger UI.
 
+## Run as a Windows service (auto-start on boot)
+
+`run.ps1` runs in the foreground and dies when you log off or reboot. To keep
+CosyTTS always up, install it as a service via [NSSM](https://nssm.cc):
+
+```powershell
+winget install NSSM.NSSM
+# then, from an ELEVATED PowerShell:
+powershell -ExecutionPolicy Bypass -File scripts\install_service.ps1
+```
+
+This registers an auto-start service `CosyTTS` (restarts on crash, logs to
+`logs\service.log`). Manage it with `services.msc` or `nssm start/stop/restart
+CosyTTS`. The service runs as LocalSystem; the installer points its cache env
+vars at your user profile so the ~3 GB Whisper model isn't re-downloaded.
+
 ## Configuration (env vars)
 
 | Variable | Default | Purpose |

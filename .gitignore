@@ -28,6 +28,7 @@ out*.wav
 stream_out.wav
 
 # Logs / scratch
+logs/
 *.log
 *.tmp
 *.bak
