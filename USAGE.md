@@ -68,6 +68,32 @@ includes a `verification` object:
                  "heard": "whisper's unbiased transcription"}
 ```
 
+## Throughput & batch generation
+
+The service runs on **one GPU, one request at a time** — synthesis is
+GPU-compute-bound, so the GPU is the bottleneck, not the number of HTTP workers.
+Running multiple uvicorn workers does **not** speed things up: extra workers just
+time-slice the same GPU (and multiply VRAM by loading a model copy each).
+
+So for batch jobs:
+
+- **Send requests serially, or with concurrency ≤ 2** — await each before firing
+  the next. Blasting dozens of parallel requests just builds a queue; the far
+  end of it times out while the GPU grinds through one at a time.
+- Steady-state latency is ~2-3 s per short clip (synthesis + a Whisper verify
+  pass). First call after a (re)start is slow (~40 s warmup).
+
+### Server-side tuning (env vars, set on the service)
+
+| Variable | Default | Notes |
+|---|---|---|
+| `TTS_VERIFY_DEFAULT` | `true` | Set `false` for max throughput (skips the Whisper pass), at the cost of the occasional garbage take slipping through. |
+| `TTS_WHISPER_MODEL` | `large-v3` | `medium` makes the verify/timestamp pass ~4× faster with slightly noisier transcription. |
+| `TTS_VERIFY_THRESHOLD` | `0.90` | Lower it (e.g. `0.78`) when using `medium`, whose noisier Chinese transcription would otherwise trigger false retries. |
+
+A good batch-friendly combo is `medium` + threshold `0.78`: keeps garbage-take
+protection (a runaway take still scores ~0) while staying ~2-3 s/request.
+
 ## Response modes
 
 ### 1. Default — binary WAV
